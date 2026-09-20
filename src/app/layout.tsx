@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EV Charging Session Predictor",
+  title: "EV Charging Time Estimator",
   description:
-    "Predict EV charging session energy (kWh) from station, vehicle, weather, and time features using a trained scikit-learn model.",
+    "Estimate EV charging session duration from battery, SOC range, charger type, and weather using a simple energy/power formula.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Zap } from "lucide-react";
+import { Clock3 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,7 @@ const defaultValues = {
   charger_type: "dc_fast",
   vehicle_battery_kwh: 75,
   starting_soc_pct: 35,
+  target_soc_pct: 80,
   ambient_temp_c: 18,
   station_occupancy_pct: 55,
 };
@@ -50,7 +51,7 @@ export function PredictorForm({
   const [form, setForm] = useState(defaultValues);
 
   const chargerLabel = useMemo(
-    () => (form.charger_type === "dc_fast" ? "DC fast (150 kW)" : "Level 2 (11 kW)"),
+    () => (form.charger_type === "dc_fast" ? "DC fast (~120 kW avg)" : "Level 2 (~11 kW avg)"),
     [form.charger_type]
   );
 
@@ -67,11 +68,11 @@ export function PredictorForm({
     <Card className="shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Zap className="size-5 text-emerald-700" />
+          <Clock3 className="size-5 text-emerald-700" />
           Session inputs
         </CardTitle>
         <CardDescription>
-          Adjust station, vehicle, and environmental features to predict delivered session energy.
+          Enter battery, SOC range, charger type, and conditions to estimate charging time.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -180,6 +181,19 @@ export function PredictorForm({
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="target-soc">Target state of charge (%)</Label>
+            <Input
+              id="target-soc"
+              type="number"
+              min={10}
+              max={100}
+              step={0.1}
+              value={form.target_soc_pct}
+              onChange={(e) => updateNumber("target_soc_pct", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="temp">Ambient temperature (°C)</Label>
             <Input
               id="temp"
@@ -208,10 +222,11 @@ export function PredictorForm({
 
         <CardFooter className="flex flex-col items-start gap-4 border-t pt-6">
           <div className="text-sm text-muted-foreground">
-            Using {chargerLabel} at {form.station_id} with {form.starting_soc_pct}% starting SOC.
+            Using {chargerLabel} at {form.station_id}, charging {form.starting_soc_pct}% →{" "}
+            {form.target_soc_pct}%.
           </div>
           <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-            {loading ? "Predicting…" : "Predict session energy"}
+            {loading ? "Estimating…" : "Estimate charging time"}
           </Button>
           {lastPrediction && (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">

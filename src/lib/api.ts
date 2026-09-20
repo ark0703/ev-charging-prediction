@@ -5,25 +5,27 @@ export type PredictRequest = {
   charger_type: string;
   vehicle_battery_kwh: number;
   starting_soc_pct: number;
+  target_soc_pct: number;
   ambient_temp_c: number;
   station_occupancy_pct: number;
 };
 
 export type PredictResponse = {
-  predicted_session_energy_kwh: number;
-  confidence_band_kwh: number;
+  predicted_session_duration_minutes: number;
+  human_readable: string;
+  energy_kwh: number;
+  average_power_kw: number;
   summary: string;
 };
 
-export type ModelMetrics = {
+export type EstimatorInfo = {
+  method: string;
   target: string;
+  formula: string;
+  energy_formula: string;
+  average_power_kw: Record<string, number>;
   features: string[];
-  train_rows: number;
-  test_rows: number;
-  rmse_kwh: number;
-  mae_kwh: number;
-  r2: number;
-  model: string;
+  adjustments: string[];
 };
 
 export type SchemaResponse = {
@@ -35,12 +37,14 @@ export type SchemaResponse = {
 };
 
 export type RecentPrediction = {
-  predicted_session_energy_kwh: number;
+  predicted_session_duration_minutes: number;
+  human_readable: string;
   hour_of_day: number;
   day_of_week: number;
   station_id: string;
   charger_type: string;
   starting_soc_pct: number;
+  target_soc_pct: number;
 };
 
 const API_BASE = "/api/ml";
@@ -77,8 +81,8 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export function getMetrics() {
-  return fetchJson<ModelMetrics>("/metrics");
+export function getEstimatorInfo() {
+  return fetchJson<EstimatorInfo>("/metrics");
 }
 
 export function getSchema() {
@@ -97,5 +101,5 @@ export function predictSession(payload: PredictRequest) {
 }
 
 export function checkHealth() {
-  return fetchJson<{ status: string; model_loaded: boolean }>("/health");
+  return fetchJson<{ status: string; estimator_ready: boolean }>("/health");
 }

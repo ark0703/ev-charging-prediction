@@ -1,27 +1,45 @@
-"""FastAPI inference service for EV session energy predictions."""
+"""FastAPI service for formula-based EV charging time estimates."""
 
 from __future__ import annotations
 
-import json
 from collections import deque
-from pathlib import Path
 from typing import Literal
 
-import joblib
-import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-ROOT = Path(__file__).resolve().parents[1]
-MODEL_PATH = ROOT / "models" / "model.joblib"
-METRICS_PATH = ROOT / "models" / "metrics.json"
+from ml.calculate_time import charging_time_minutes, format_duration
 
 STATIONS = ["downtown", "airport", "highway", "suburban", "mall"]
 CHARGER_TYPES = ["level2", "dc_fast"]
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 recent_predictions: deque[dict] = deque(maxlen=8)
+
+FORMULA_INFO = {
+    "method": "formula",
+    "target": "session_duration_minutes",
+    "formula": "time_hours = energy_kwh / average_power_kw",
+    "energy_formula": "energy_kwh = battery_kwh × (target_soc - start_soc) / 100 × temp_efficiency",
+    "average_power_kw": {"level2": 11.0, "dc_fast": 120.0},
+    "features": [
+        "hour_of_day",
+        "day_of_week",
+        "station_id",
+        "charger_type",
+        "vehicle_battery_kwh",
+        "starting_soc_pct",
+        "target_soc_pct",
+        "ambient_temp_c",
+        "station_occupancy_pct",
+    ],
+    "adjustments": [
+        "Thermal efficiency penalty in cold/hot weather",
+        "DC fast taper above 80% state of charge",
+        "5% longer estimate when station occupancy exceeds 75%",
+    ],
+}
 
 
 class PredictRequest(BaseModel):
@@ -31,17 +49,20 @@ class PredictRequest(BaseModel):
     charger_type: Literal["level2", "dc_fast"]
     vehicle_battery_kwh: float = Field(ge=20, le=150)
     starting_soc_pct: float = Field(ge=5, le=95)
+    target_soc_pct: float = Field(ge=10, le=100)
     ambient_temp_c: float = Field(ge=-15, le=45)
     station_occupancy_pct: float = Field(ge=0, le=100)
 
 
 class PredictResponse(BaseModel):
-    predicted_session_energy_kwh: float
-    confidence_band_kwh: float
+    predicted_session_duration_minutes: float
+    human_readable: str
+    energy_kwh: float
+    average_power_kw: float
     summary: str
 
 
-app = FastAPI(title="EV Charging Prediction API", version="1.0.0")
+app = FastAPI(title="EV Charging Time Estimator API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,38 +70,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_pipeline = None
-_metrics: dict | None = None
-
-
-def load_artifacts() -> None:
-    global _pipeline, _metrics
-    if not MODEL_PATH.exists():
-        raise RuntimeError(
-            "Model not found. Run `python ml/generate_data.py && python ml/train.py` first."
-        )
-    _pipeline = joblib.load(MODEL_PATH)
-    if METRICS_PATH.exists():
-        _metrics = json.loads(METRICS_PATH.read_text())
-    else:
-        _metrics = None
-
-
-@app.on_event("startup")
-def startup() -> None:
-    load_artifacts()
-
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "model_loaded": _pipeline is not None}
+    return {"status": "ok", "estimator_ready": True}
 
 
 @app.get("/metrics")
 def metrics() -> dict:
-    if _metrics is None:
-        raise HTTPException(status_code=503, detail="Metrics not available.")
-    return _metrics
+    return FORMULA_INFO
 
 
 @app.get("/schema")
@@ -89,17 +87,8 @@ def schema() -> dict:
         "stations": STATIONS,
         "charger_types": CHARGER_TYPES,
         "day_names": DAY_NAMES,
-        "target": "session_energy_kwh",
-        "features": [
-            "hour_of_day",
-            "day_of_week",
-            "station_id",
-            "charger_type",
-            "vehicle_battery_kwh",
-            "starting_soc_pct",
-            "ambient_temp_c",
-            "station_occupancy_pct",
-        ],
+        "target": "session_duration_minutes",
+        "features": FORMULA_INFO["features"],
     }
 
 
@@ -110,33 +99,40 @@ def recent() -> list[dict]:
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(payload: PredictRequest) -> PredictResponse:
-    if _pipeline is None:
-        raise HTTPException(status_code=503, detail="Model not loaded.")
-
-    row = pd.DataFrame([payload.model_dump()])
-    prediction = float(_pipeline.predict(row)[0])
-    mae = float(_metrics["mae_kwh"]) if _metrics else 3.5
-    band = round(mae * 1.2, 2)
-
+    result = charging_time_minutes(
+        payload.vehicle_battery_kwh,
+        payload.starting_soc_pct,
+        payload.target_soc_pct,
+        payload.charger_type,
+        payload.ambient_temp_c,
+        payload.station_occupancy_pct,
+    )
+    minutes = float(result["session_duration_minutes"])
+    readable = format_duration(minutes)
     day = DAY_NAMES[payload.day_of_week]
     summary = (
-        f"{payload.charger_type.replace('_', ' ').title()} session at "
-        f"{payload.station_id} on {day} around {payload.hour_of_day:02d}:00 "
-        f"is expected to deliver about {prediction:.1f} kWh."
+        f"{payload.charger_type.replace('_', ' ').title()} at {payload.station_id} on "
+        f"{day} around {payload.hour_of_day:02d}:00 should take about {readable} "
+        f"to charge from {payload.starting_soc_pct:.0f}% to {payload.target_soc_pct:.0f}%."
     )
 
-    record = {
-        "predicted_session_energy_kwh": round(prediction, 2),
-        "hour_of_day": payload.hour_of_day,
-        "day_of_week": payload.day_of_week,
-        "station_id": payload.station_id,
-        "charger_type": payload.charger_type,
-        "starting_soc_pct": payload.starting_soc_pct,
-    }
-    recent_predictions.appendleft(record)
+    recent_predictions.appendleft(
+        {
+            "predicted_session_duration_minutes": minutes,
+            "human_readable": readable,
+            "hour_of_day": payload.hour_of_day,
+            "day_of_week": payload.day_of_week,
+            "station_id": payload.station_id,
+            "charger_type": payload.charger_type,
+            "starting_soc_pct": payload.starting_soc_pct,
+            "target_soc_pct": payload.target_soc_pct,
+        }
+    )
 
     return PredictResponse(
-        predicted_session_energy_kwh=round(prediction, 2),
-        confidence_band_kwh=band,
+        predicted_session_duration_minutes=minutes,
+        human_readable=readable,
+        energy_kwh=float(result["energy_kwh"]),
+        average_power_kw=float(result["average_power_kw"]),
         summary=summary,
     )

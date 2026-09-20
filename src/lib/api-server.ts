@@ -1,5 +1,5 @@
 import type {
-  ModelMetrics,
+  EstimatorInfo,
   RecentPrediction,
   SchemaResponse,
 } from "@/lib/api";
@@ -31,7 +31,7 @@ export type BootstrapData = {
   ok: true;
   apiOnline: boolean;
   schema: SchemaResponse;
-  metrics: ModelMetrics;
+  estimator: EstimatorInfo;
   recent: RecentPrediction[];
 };
 
@@ -42,18 +42,18 @@ export type BootstrapError = {
 
 export async function loadBootstrapData(): Promise<BootstrapData | BootstrapError> {
   try {
-    const health = await fetchJson<{ status: string; model_loaded: boolean }>("/health");
-    const [schema, metrics, recent] = await Promise.all([
+    const health = await fetchJson<{ status: string; estimator_ready: boolean }>("/health");
+    const [schema, estimator, recent] = await Promise.all([
       fetchJson<SchemaResponse>("/schema"),
-      fetchJson<ModelMetrics>("/metrics"),
+      fetchJson<EstimatorInfo>("/metrics"),
       fetchJson<RecentPrediction[]>("/recent"),
     ]);
 
     return {
       ok: true,
-      apiOnline: health.model_loaded,
+      apiOnline: health.estimator_ready,
       schema,
-      metrics,
+      estimator,
       recent,
     };
   } catch (error) {
