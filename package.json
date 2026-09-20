@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "bash scripts/dev.sh",
+    "dev": "node scripts/ensure-model.mjs && concurrently -k -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
     "dev:web": "next dev -p 4321",
-    "dev:api": "uvicorn api.main:app --host 127.0.0.1 --port 8765 --reload",
-    "train": "bash scripts/train.sh",
+    "dev:api": "python -m uvicorn api.main:app --host 127.0.0.1 --port 8765 --reload",
+    "train": "node scripts/train.mjs",
+    "train:bash": "bash scripts/train.sh",
+    "dev:bash": "bash scripts/dev.sh",
     "build": "next build",
     "start": "next start -p 4321",
     "lint": "eslint"
@@ -27,6 +29,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
