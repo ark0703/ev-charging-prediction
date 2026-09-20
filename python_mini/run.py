@@ -4,7 +4,7 @@ from generate_data import generate_rows
 from pathlib import Path
 
 from train import train
-from predict import predict
+from predict import format_duration, predict
 
 
 def main() -> None:
@@ -17,11 +17,11 @@ def main() -> None:
 
     metrics = train(data_path, model_dir)
     print(
-        f"Metrics: RMSE={metrics['rmse_kwh']:.2f} kWh, "
-        f"MAE={metrics['mae_kwh']:.2f} kWh, R2={metrics['r2']:.3f}"
+        f"Metrics: RMSE={metrics['rmse_minutes']:.1f} min, "
+        f"MAE={metrics['mae_minutes']:.1f} min, R2={metrics['r2']:.3f}"
     )
 
-    kwh = predict(
+    minutes = predict(
         model_dir / "model.joblib",
         hour=18,
         day=2,
@@ -29,10 +29,11 @@ def main() -> None:
         charger="dc_fast",
         battery=82,
         soc=28,
+        target_soc=80,
         temp=12,
         occupancy=64,
     )
-    print(f"Sample prediction (airport, Wed 18:00): {kwh:.1f} kWh")
+    print(f"Sample prediction (airport, Wed 18:00): {format_duration(minutes)}")
 
 
 if __name__ == "__main__":

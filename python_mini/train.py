@@ -1,4 +1,4 @@
-"""Train a supervised model to predict EV session energy (kWh)."""
+"""Train a supervised model to predict EV charging session duration."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-TARGET = "session_energy_kwh"
+TARGET = "session_duration_minutes"
 FEATURES = [
     "hour_of_day",
     "day_of_week",
@@ -24,6 +24,7 @@ FEATURES = [
     "charger_type",
     "vehicle_battery_kwh",
     "starting_soc_pct",
+    "target_soc_pct",
     "ambient_temp_c",
     "station_occupancy_pct",
 ]
@@ -64,8 +65,8 @@ def train(csv_path: Path, model_dir: Path) -> dict:
         "target": TARGET,
         "train_rows": len(x_train),
         "test_rows": len(x_test),
-        "rmse_kwh": float(np.sqrt(mean_squared_error(y_test, preds))),
-        "mae_kwh": float(mean_absolute_error(y_test, preds)),
+        "rmse_minutes": float(np.sqrt(mean_squared_error(y_test, preds))),
+        "mae_minutes": float(mean_absolute_error(y_test, preds)),
         "r2": float(r2_score(y_test, preds)),
     }
 
@@ -83,8 +84,8 @@ def main() -> None:
 
     metrics = train(args.data, args.model_dir)
     print("Training complete")
-    print(f"  RMSE: {metrics['rmse_kwh']:.2f} kWh")
-    print(f"  MAE:  {metrics['mae_kwh']:.2f} kWh")
+    print(f"  RMSE: {metrics['rmse_minutes']:.1f} minutes")
+    print(f"  MAE:  {metrics['mae_minutes']:.1f} minutes")
     print(f"  R2:   {metrics['r2']:.3f}")
     print(f"  Saved: {args.model_dir / 'model.joblib'}")
 
