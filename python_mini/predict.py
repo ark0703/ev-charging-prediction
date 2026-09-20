@@ -1,29 +1,18 @@
-"""Predict charging session duration from the command line."""
+"""Predict charging time from the command line using a simple formula."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
-import joblib
-import pandas as pd
+from calculate_time import charging_time_minutes, format_duration
 
 STATIONS = ["downtown", "airport", "highway", "suburban", "mall"]
 CHARGERS = ["level2", "dc_fast"]
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
-def format_duration(minutes: float) -> str:
-    total = max(0, int(round(minutes)))
-    hours, mins = divmod(total, 60)
-    if hours:
-        return f"{hours}h {mins}m ({total} minutes)"
-    return f"{mins}m ({total} minutes)"
-
-
-def predict(
-    model_path: Path,
+def build_result(
     hour: int,
     day: int,
     station: str,
@@ -33,29 +22,36 @@ def predict(
     target_soc: float,
     temp: float,
     occupancy: float,
-) -> float:
-    model = joblib.load(model_path)
-    row = pd.DataFrame(
-        [
-            {
-                "hour_of_day": hour,
-                "day_of_week": day,
-                "station_id": station,
-                "charger_type": charger,
-                "vehicle_battery_kwh": battery,
-                "starting_soc_pct": soc,
-                "target_soc_pct": target_soc,
-                "ambient_temp_c": temp,
-                "station_occupancy_pct": occupancy,
-            }
-        ]
-    )
-    return float(model.predict(row)[0])
+) -> dict:
+    result = charging_time_minutes(battery, soc, target_soc, charger, temp)
+
+    # Small congestion adjustment: busy stations may imply slightly longer effective sessions.
+    if occupancy > 75:
+        result["session_duration_minutes"] = round(
+            result["session_duration_minutes"] * 1.05, 1
+        )
+        result["occupancy_adjustment"] = 1.05
+    else:
+        result["occupancy_adjustment"] = 1.0
+
+    result["human_readable"] = format_duration(result["session_duration_minutes"])
+    result["context"] = {
+        "hour_of_day": hour,
+        "day_of_week": day,
+        "station_id": station,
+        "charger_type": charger,
+        "vehicle_battery_kwh": battery,
+        "starting_soc_pct": soc,
+        "target_soc_pct": target_soc,
+        "ambient_temp_c": temp,
+        "station_occupancy_pct": occupancy,
+    }
+    return result
 
 
-def interactive(model_path: Path) -> None:
-    print("\nEV Charging Time Predictor (Python mini project)")
-    print("Enter values, or press Enter to keep the default in [brackets].\n")
+def interactive() -> None:
+    print("\nEV Charging Time Estimator (formula-based)")
+    print("Formula: time ≈ energy_needed / average_charger_power\n")
 
     hour = int(input("Hour of day (0-23) [18]: ") or 18)
     day = int(input("Day of week (0=Mon ... 6=Sun) [2]: ") or 2)
@@ -67,19 +63,19 @@ def interactive(model_path: Path) -> None:
     temp = float(input("Temperature C [18]: ") or 18)
     occupancy = float(input("Station occupancy % [50]: ") or 50)
 
-    minutes = predict(
-        model_path, hour, day, station, charger, battery, soc, target_soc, temp, occupancy
-    )
-    print(f"\nPredicted charging time: {format_duration(minutes)}")
+    result = build_result(hour, day, station, charger, battery, soc, target_soc, temp, occupancy)
+    print(f"\nEstimated charging time: {result['human_readable']}")
+    print(f"Energy needed: {result['energy_kwh']} kWh at ~{result['average_power_kw']} kW average")
     print(
         f"Context: {DAYS[day]} {hour:02d}:00, {station}, {charger}, "
-        f"battery {battery} kWh, {soc}% -> {target_soc}%"
+        f"{soc}% -> {target_soc}%"
     )
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Predict EV charging session duration")
-    parser.add_argument("--model", type=Path, default=Path("models/model.joblib"))
+    parser = argparse.ArgumentParser(
+        description="Estimate EV charging time using energy/power formula"
+    )
     parser.add_argument("--interactive", action="store_true", help="Run Q&A mode")
     parser.add_argument("--hour", type=int, default=18)
     parser.add_argument("--day", type=int, default=2)
@@ -92,15 +88,11 @@ def main() -> None:
     parser.add_argument("--occupancy", type=float, default=50)
     args = parser.parse_args()
 
-    if not args.model.exists():
-        raise SystemExit("Model not found. Run: python train.py")
-
     if args.interactive:
-        interactive(args.model)
+        interactive()
         return
 
-    minutes = predict(
-        args.model,
+    result = build_result(
         args.hour,
         args.day,
         args.station,
@@ -111,15 +103,7 @@ def main() -> None:
         args.temp,
         args.occupancy,
     )
-    print(
-        json.dumps(
-            {
-                "predicted_session_duration_minutes": round(minutes, 1),
-                "human_readable": format_duration(minutes),
-            },
-            indent=2,
-        )
-    )
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,39 +1,52 @@
-"""One-command demo: generate data, train model, make one prediction."""
+"""Demo the formula-based charging time estimator."""
 
-from generate_data import generate_rows
-from pathlib import Path
-
-from train import train
-from predict import format_duration, predict
+from calculate_time import charging_time_minutes, format_duration
 
 
 def main() -> None:
-    data_path = Path("data/sessions.csv")
-    model_dir = Path("models")
+    examples = [
+        {
+            "label": "DC fast, airport, 28% -> 80%",
+            "battery": 82,
+            "soc": 28,
+            "target": 80,
+            "charger": "dc_fast",
+            "temp": 12,
+        },
+        {
+            "label": "Level 2, home-style, 45% -> 90%",
+            "battery": 60,
+            "soc": 45,
+            "target": 90,
+            "charger": "level2",
+            "temp": 18,
+        },
+        {
+            "label": "DC fast, cold weather, 15% -> 85%",
+            "battery": 75,
+            "soc": 15,
+            "target": 85,
+            "charger": "dc_fast",
+            "temp": -2,
+        },
+    ]
 
-    data_path.parent.mkdir(parents=True, exist_ok=True)
-    generate_rows(5000).to_csv(data_path, index=False)
-    print(f"Generated data -> {data_path}")
+    print("EV Charging Time Estimator")
+    print("Method: time (hours) ≈ energy_kwh / average_power_kw\n")
 
-    metrics = train(data_path, model_dir)
-    print(
-        f"Metrics: RMSE={metrics['rmse_minutes']:.1f} min, "
-        f"MAE={metrics['mae_minutes']:.1f} min, R2={metrics['r2']:.3f}"
-    )
-
-    minutes = predict(
-        model_dir / "model.joblib",
-        hour=18,
-        day=2,
-        station="airport",
-        charger="dc_fast",
-        battery=82,
-        soc=28,
-        target_soc=80,
-        temp=12,
-        occupancy=64,
-    )
-    print(f"Sample prediction (airport, Wed 18:00): {format_duration(minutes)}")
+    for item in examples:
+        result = charging_time_minutes(
+            item["battery"],
+            item["soc"],
+            item["target"],
+            item["charger"],
+            item["temp"],
+        )
+        print(item["label"])
+        print(f"  Energy: {result['energy_kwh']} kWh")
+        print(f"  Average power: {result['average_power_kw']} kW")
+        print(f"  Estimated time: {format_duration(result['session_duration_minutes'])}")
+        print()
 
 
 if __name__ == "__main__":

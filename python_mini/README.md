@@ -1,19 +1,31 @@
-# EV Charging Time Prediction — Python Mini Project
+# EV Charging Time Estimator — Python Mini Project
 
-A **small supervised machine learning project in Python only** (no web app, no API).
+A **small Python-only mini project** that estimates **how long an EV charging session will take**.
 
-Predict **how long a charging session will take (minutes)** from time, station, charger type, vehicle, target SOC, and weather features.
+Uses **Option B: a simple formula**, not machine learning:
 
-## What you get
+```text
+time (hours) ≈ energy_needed (kWh) / average_charger_power (kW)
+time (minutes) = time (hours) × 60
+```
+
+Where:
+
+```text
+energy_needed = battery_kwh × (target_soc - start_soc) / 100 × temperature_efficiency
+```
+
+## Files
 
 | File | Purpose |
 | --- | --- |
-| `generate_data.py` | Create synthetic training CSV |
-| `train.py` | Train scikit-learn model + print metrics |
-| `predict.py` | Predict charging time from CLI |
-| `run.py` | Demo: generate → train → predict in one go |
+| `calculate_time.py` | Core formula |
+| `predict.py` | CLI to estimate time |
+| `run.py` | Print a few example estimates |
 
-## Setup (Windows / macOS / Linux)
+No training step. No model file.
+
+## Setup
 
 ```bash
 cd python_mini
@@ -24,9 +36,9 @@ python -m venv .venv
 
 # macOS / Linux
 # source .venv/bin/activate
-
-pip install -r requirements.txt
 ```
+
+No extra packages required (Python standard library only).
 
 ## Quick demo
 
@@ -34,20 +46,13 @@ pip install -r requirements.txt
 python run.py
 ```
 
-## Step by step
+## Interactive estimate
 
 ```bash
-# 1) Create dataset
-python generate_data.py
-
-# 2) Train model (80/20 split, saves models/model.joblib)
-python train.py
-
-# 3) Predict charging time
 python predict.py --interactive
 ```
 
-### Example (non-interactive)
+## One-line example
 
 ```bash
 python predict.py --hour 18 --day 2 --station airport --charger dc_fast --battery 82 --soc 28 --target-soc 80 --temp 12 --occupancy 64
@@ -57,49 +62,48 @@ Example output:
 
 ```json
 {
-  "predicted_session_duration_minutes": 24.6,
-  "human_readable": "25m (25 minutes)"
+  "energy_kwh": 42.62,
+  "average_power_kw": 120.0,
+  "session_duration_minutes": 23.5,
+  "human_readable": "24m (24 minutes)"
 }
 ```
 
-## Use your own dataset
+## Assumptions
 
-Put a CSV at `data/sessions.csv` with these columns:
+| Charger | Average power used |
+| --- | --- |
+| `dc_fast` | 120 kW |
+| `level2` | 11 kW |
 
-- `hour_of_day`, `day_of_week`
-- `station_id`, `charger_type`
-- `vehicle_battery_kwh`, `starting_soc_pct`, `target_soc_pct`
-- `ambient_temp_c`, `station_occupancy_pct`
-- **`session_duration_minutes`** (target label — how long the session lasted)
+Also applied:
 
-Then run:
+- **Cold/hot weather** reduces effective energy efficiency
+- **DC fast taper** above 80% SOC (charging slows near full)
+- **High station occupancy** adds a small 5% adjustment
 
-```bash
-python train.py --data data/sessions.csv
-python predict.py --interactive
-```
+These are approximations, not exact vehicle-specific curves.
 
-## Model
+## Inputs
 
-- **Type:** Supervised regression
-- **Algorithm:** `GradientBoostingRegressor` (scikit-learn)
-- **Target:** `session_duration_minutes`
-- **Metrics:** RMSE and MAE in minutes, plus R² on held-out test set
+- `starting_soc_pct` — battery level when you plug in
+- `target_soc_pct` — desired battery level when you unplug
+- `vehicle_battery_kwh` — pack size
+- `charger_type` — `level2` or `dc_fast`
+- `ambient_temp_c` — weather effect
+- `station_id`, `hour_of_day`, etc. — kept for context in output
 
-Synthetic data approximates duration from energy needed, charger power, temperature, and SOC range. Real-world accuracy depends on your dataset.
+## Accuracy note
 
-## Project layout
+This is a **rough estimate**. Real charging time varies by:
 
-```
-python_mini/
-  generate_data.py
-  train.py
-  predict.py
-  run.py
-  requirements.txt
-  data/sessions.csv      # generated
-  models/model.joblib    # trained model
-  models/metrics.json    # evaluation scores
-```
+- Vehicle max charge rate
+- Battery curve above 80%
+- Cable/shared power limits
+- Queue/wait time before plugging in
 
-This folder is intentionally separate from the full-stack app in the repo root (which still predicts energy unless you update it separately).
+Good for a mini project demo; use real session logs if you need high accuracy later.
+
+## Legacy ML files
+
+`train.py`, `generate_data.py`, and `requirements.txt` are kept from an earlier ML version but are **not required** for this formula-based flow.
