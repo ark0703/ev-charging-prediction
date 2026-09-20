@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertCircle, BatteryCharging, Gauge, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, BatteryCharging, Gauge, Loader2, RefreshCw } from "lucide-react";
 
 import { PredictorForm } from "@/components/predictor-form";
 import { MetricsPanel } from "@/components/metrics-panel";
 import { RecentPredictions } from "@/components/recent-predictions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { BootstrapData, BootstrapError } from "@/lib/api-server";
 import {
-  checkHealth,
   getMetrics,
   getRecentPredictions,
   getSchema,
@@ -23,64 +23,51 @@ import {
   type SchemaResponse,
 } from "@/lib/api";
 
-export function PredictorApp() {
-  const [schema, setSchema] = useState<SchemaResponse | null>(null);
-  const [metrics, setMetrics] = useState<ModelMetrics | null>(null);
-  const [recent, setRecent] = useState<RecentPrediction[]>([]);
+type PredictorAppProps = {
+  bootstrap: BootstrapData | BootstrapError;
+};
+
+export function PredictorApp({ bootstrap }: PredictorAppProps) {
+  const [schema, setSchema] = useState<SchemaResponse | null>(
+    bootstrap.ok ? bootstrap.schema : null
+  );
+  const [metrics, setMetrics] = useState<ModelMetrics | null>(
+    bootstrap.ok ? bootstrap.metrics : null
+  );
+  const [recent, setRecent] = useState<RecentPrediction[]>(
+    bootstrap.ok ? bootstrap.recent : []
+  );
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [apiOnline, setApiOnline] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(bootstrap.ok ? null : bootstrap.message);
+  const [apiOnline, setApiOnline] = useState(bootstrap.ok ? bootstrap.apiOnline : false);
 
   const refreshRecent = async () => {
-    try {
-      const items = await getRecentPredictions();
-      setRecent(items);
-    } catch {
-      // Non-fatal if recent list fails after a successful prediction.
-    }
+    const items = await getRecentPredictions();
+    setRecent(items);
   };
 
-  useEffect(() => {
-    let active = true;
+  const reloadBootstrap = async () => {
+    setRefreshing(true);
+    setError(null);
 
-    async function bootstrap() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const health = await checkHealth();
-        if (!active) return;
-        setApiOnline(health.model_loaded);
-
-        const [schemaData, metricsData, recentData] = await Promise.all([
-          getSchema(),
-          getMetrics(),
-          getRecentPredictions(),
-        ]);
-
-        if (!active) return;
-        setSchema(schemaData);
-        setMetrics(metricsData);
-        setRecent(recentData);
-      } catch (err) {
-        if (!active) return;
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to reach the prediction API. Start the dev server with npm run dev."
-        );
-      } finally {
-        if (active) setLoading(false);
-      }
+    try {
+      const [schemaData, metricsData, recentData] = await Promise.all([
+        getSchema(),
+        getMetrics(),
+        getRecentPredictions(),
+      ]);
+      setSchema(schemaData);
+      setMetrics(metricsData);
+      setRecent(recentData);
+      setApiOnline(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reload app data.");
+    } finally {
+      setRefreshing(false);
     }
-
-    bootstrap();
-    return () => {
-      active = false;
-    };
-  }, []);
+  };
 
   const handlePredict = async (payload: PredictRequest) => {
     setPredicting(true);
@@ -97,22 +84,9 @@ export function PredictorApp() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-6">
-        <Skeleton className="h-10 w-72" />
-        <Skeleton className="h-5 w-full max-w-2xl" />
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <Skeleton className="h-[520px] w-full" />
-          <Skeleton className="h-[520px] w-full" />
-        </div>
-      </div>
-    );
-  }
-
   if (error && !schema) {
     return (
-      <div className="mx-auto flex w-full max-w-3xl px-4 py-16 md:px-6">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 py-16 md:px-6">
         <Alert variant="destructive" className="w-full">
           <AlertCircle />
           <AlertTitle>Prediction service unavailable</AlertTitle>
@@ -121,6 +95,10 @@ export function PredictorApp() {
             start the FastAPI backend and Next.js UI together.
           </AlertDescription>
         </Alert>
+        <Button onClick={reloadBootstrap} disabled={refreshing} className="w-fit">
+          <RefreshCw className={`mr-2 size-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Retrying…" : "Retry connection"}
+        </Button>
       </div>
     );
   }
