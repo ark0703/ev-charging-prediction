@@ -2,6 +2,8 @@
 
 Predict how much energy an EV charging session will deliver (kWh) using a supervised scikit-learn model trained on realistic synthetic session data. The app includes a Python training pipeline, a FastAPI inference API, and a Next.js web UI for interactive predictions and model performance.
 
+> **Python-only mini project:** see [`python_mini/`](python_mini/README.md) for a small CLI version with just scikit-learn (no web app).
+
 ## What the model predicts
 
 **Target:** `session_energy_kwh` — energy delivered during a single charging session.

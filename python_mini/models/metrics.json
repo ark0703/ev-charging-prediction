@@ -1,0 +1,8 @@
+{
+  "target": "session_energy_kwh",
+  "train_rows": 4000,
+  "test_rows": 1000,
+  "rmse_kwh": 4.8384774759790234,
+  "mae_kwh": 3.6382652525383308,
+  "r2": 0.9151024040081683
+}
