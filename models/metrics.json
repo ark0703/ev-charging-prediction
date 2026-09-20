@@ -1,0 +1,19 @@
+{
+  "target": "session_energy_kwh",
+  "features": [
+    "hour_of_day",
+    "day_of_week",
+    "station_id",
+    "charger_type",
+    "vehicle_battery_kwh",
+    "starting_soc_pct",
+    "ambient_temp_c",
+    "station_occupancy_pct"
+  ],
+  "train_rows": 6400,
+  "test_rows": 1600,
+  "rmse_kwh": 5.354599395617105,
+  "mae_kwh": 4.1045660212927615,
+  "r2": 0.9092850008353257,
+  "model": "GradientBoostingRegressor"
+}
